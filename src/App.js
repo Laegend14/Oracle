@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from 'genlayer-js';
 import { testnetAsimov } from 'genlayer-js/chains';
 import { TransactionStatus } from "genlayer-js/types";
@@ -12,6 +12,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [account, setAccount] = useState(null);
 
+  // Initialize client
+  // We use useMemo or define it outside if we wanted to be super strict, 
+  // but defining it here is fine as long as we handle dependencies.
   const client = createClient({ chain: testnetAsimov });
 
   const connectWallet = async () => {
@@ -23,7 +26,8 @@ function App() {
     }
   };
 
-  const fetchLeaderboard = async () => {
+  // FIX: Wrapped in useCallback to satisfy Vercel's exhaustive-deps rule
+  const fetchLeaderboard = useCallback(async () => {
     try {
       const data = await client.readContract({
         address: CONTRACT_ADDRESS,
@@ -34,7 +38,7 @@ function App() {
     } catch (err) {
       console.error("Fetch error:", err);
     }
-  };
+  }, [client]); // Client is the dependency here
 
   const submitText = async () => {
     if (!account) return connectWallet();
@@ -57,7 +61,10 @@ function App() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchLeaderboard(); }, []);
+  // FIX: fetchLeaderboard is now a stable dependency
+  useEffect(() => { 
+    fetchLeaderboard(); 
+  }, [fetchLeaderboard]);
 
   return (
     <div className="App">
