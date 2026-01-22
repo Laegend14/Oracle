@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { createClient } from 'genlayer-js';
+import { createClient, custom } from 'genlayer-js'; // Added custom for wallet transport
 import { testnetAsimov } from 'genlayer-js/chains';
 import { TransactionStatus } from "genlayer-js/types";
 import './App.css';
@@ -12,21 +12,25 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [account, setAccount] = useState(null);
 
-  // Initialize client
-  // We use useMemo or define it outside if we wanted to be super strict, 
-  // but defining it here is fine as long as we handle dependencies.
-  const client = createClient({ chain: testnetAsimov });
+  // Updated Client initialization with custom transport for wallet interaction
+  const client = createClient({ 
+    chain: testnetAsimov,
+    transport: custom(window.ethereum) 
+  });
 
   const connectWallet = async () => {
     if (window.ethereum) {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      setAccount(accounts[0]);
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        setAccount(accounts[0]);
+      } catch (err) {
+        console.error("User rejected connection", err);
+      }
     } else {
       alert("Please install the GenLayer Wallet!");
     }
   };
 
-  // FIX: Wrapped in useCallback to satisfy Vercel's exhaustive-deps rule
   const fetchLeaderboard = useCallback(async () => {
     try {
       const data = await client.readContract({
@@ -38,30 +42,43 @@ function App() {
     } catch (err) {
       console.error("Fetch error:", err);
     }
-  }, [client]); // Client is the dependency here
+  }, [client]);
 
   const submitText = async () => {
     if (!account) return connectWallet();
     if (!argument) return alert("The Oracle requires words!");
+    
     setLoading(true);
+    console.log("Attempting to submit for:", account);
+
     try {
+      // Trigger the wallet signature
       const hash = await client.writeContract({
         account: account, 
         address: CONTRACT_ADDRESS,
         functionName: 'submit_argument',
         args: [argument],
       });
-      await client.waitForTransactionReceipt({ hash, status: TransactionStatus.FINALIZED });
+
+      console.log("Transaction Hash received:", hash);
+      alert("Transaction sent! Confirming on-chain...");
+
+      // Wait for AI consensus/finalization
+      await client.waitForTransactionReceipt({ 
+        hash: hash, 
+        status: TransactionStatus.FINALIZED 
+      });
+      
       alert("The Oracle has received your wisdom.");
       setArgument('');
       fetchLeaderboard();
     } catch (err) {
       console.error("Submission failed:", err);
+      alert("Submission failed. Ensure you have Testnet GEN and are on the correct network.");
     }
     setLoading(false);
   };
 
-  // FIX: fetchLeaderboard is now a stable dependency
   useEffect(() => { 
     fetchLeaderboard(); 
   }, [fetchLeaderboard]);
@@ -101,7 +118,7 @@ function App() {
               placeholder="Type your brilliant argument here..."
             />
             <button onClick={submitText} disabled={loading} className="main-btn">
-              {loading ? <span className="loader"></span> : "Submit Entry"}
+              {loading ? "Processing..." : "Submit Entry"}
             </button>
           </div>
 
